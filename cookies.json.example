@@ -1,0 +1,20 @@
+[
+    {
+        "name": "c_user",
+        "value": "your_numeric_user_id",
+        "domain": ".facebook.com",
+        "path": "/",
+        "httpOnly": false,
+        "secure": true,
+        "sameSite": "None"
+    },
+    {
+        "name": "xs",
+        "value": "your_xs_session_token",
+        "domain": ".facebook.com",
+        "path": "/",
+        "httpOnly": true,
+        "secure": true,
+        "sameSite": "None"
+    }
+]
