@@ -1,0 +1,26 @@
+{
+    "name": "vreap-crawler",
+    "version": "1.0.0",
+    "description": "Facebook group post scraper for the VREAP real estate analytics platform",
+    "main": "dist/main.js",
+    "scripts": {
+        "start": "node -r dotenv/config dist/main.js",
+        "build": "tsc",
+        "dev": "ts-node -r dotenv/config src/main.ts",
+        "lint": "eslint src --ext .ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "crawlee": "^3.11.5",
+        "dotenv": "^16.4.5",
+        "playwright": "^1.49.1"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.5",
+        "typescript": "^5.7.2"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "license": "MIT"
+}
