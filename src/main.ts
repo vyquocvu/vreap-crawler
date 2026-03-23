@@ -18,7 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { PlaywrightCrawler, Dataset, log } from 'crawlee';
+import { PlaywrightCrawler, Dataset, ProxyConfiguration, log } from 'crawlee';
 import { Cookie } from 'playwright';
 
 // ---------------------------------------------------------------------------
@@ -31,6 +31,15 @@ interface PostRecord {
     author: string;
     post_url: string;
     scraped_at: string;
+}
+
+/** A single proxy entry returned by the Webshare proxy list API. */
+interface WebshareProxy {
+    username: string;
+    password: string;
+    proxy_address: string;
+    port: number;
+    valid: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +127,64 @@ function randomBetween(min: number, max: number): number {
 const MIN_POST_TEXT_LENGTH = 20;
 
 // ---------------------------------------------------------------------------
+// Webshare proxy helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches all valid proxies from the Webshare proxy list API and returns them
+ * as an array of authenticated proxy URLs in the format:
+ *   `http://username:password@host:port`
+ *
+ * Only proxies flagged as `valid` by Webshare are included.
+ * Returns an empty array when no API key is configured so the crawler can
+ * fall back to a direct connection.
+ *
+ * @see https://apidocs.webshare.io/proxy-list/list
+ */
+async function fetchWebshareProxies(): Promise<string[]> {
+    const apiKey = process.env.WEBSHARE_API_KEY;
+    if (!apiKey) {
+        log.info('WEBSHARE_API_KEY is not set — skipping proxy configuration.');
+        return [];
+    }
+
+    const proxyUrls: string[] = [];
+    let nextUrl: string | null = 'https://proxy.webshare.io/api/v2/proxy/list/?mode=direct&page=1&page_size=100';
+
+    while (nextUrl) {
+        log.info(`Fetching Webshare proxy list page: ${nextUrl}`);
+
+        const response = await fetch(nextUrl, {
+            headers: { Authorization: `Token ${apiKey}` },
+        });
+
+        if (!response.ok) {
+            throw new Error(
+                `Webshare proxy list API returned HTTP ${response.status} ${response.statusText}`,
+            );
+        }
+
+        const data = await response.json() as {
+            count: number;
+            next: string | null;
+            results: WebshareProxy[];
+        };
+
+        for (const proxy of data.results) {
+            if (!proxy.valid) continue;
+            proxyUrls.push(
+                `http://${proxy.username}:${proxy.password}@${proxy.proxy_address}:${proxy.port}`,
+            );
+        }
+
+        nextUrl = data.next ?? null;
+    }
+
+    log.info(`Loaded ${proxyUrls.length} valid ${proxyUrls.length === 1 ? 'proxy' : 'proxies'} from Webshare.`);
+    return proxyUrls;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -135,10 +202,19 @@ async function main(): Promise<void> {
 
     const cookies = loadFacebookCookies();
 
+    // ── Fetch Webshare proxies (optional) ──────────────────────────────────
+    const proxyUrls = await fetchWebshareProxies();
+    const proxyConfiguration = proxyUrls.length > 0
+        ? new ProxyConfiguration({ proxyUrls })
+        : undefined;
+
     // ── Configure crawler ──────────────────────────────────────────────────
     const crawler = new PlaywrightCrawler({
         // Limit to one request for this targeted scraping run
         maxRequestsPerCrawl: 1,
+
+        // Rotate through Webshare proxies when available
+        proxyConfiguration,
 
         // Use a headless Chromium browser; headless mode reduces overhead
         // while still handling JavaScript-rendered pages.
